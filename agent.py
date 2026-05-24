@@ -166,10 +166,27 @@ if __name__ == "__main__":
     import asyncio
     async def main():
         import sys
-        q = sys.argv[1] if len(sys.argv) > 1 else "What's the weather like in Paris today?"
-        print(f"Running agent with query: {q}")
-        ans = await run(q)
-        print("\n=== FINAL ANSWER ===")
-        print(ans)
+        if len(sys.argv) > 1 :
+            q = [sys.argv[1]]
+        else:
+            q = ["Fetch https://en.wikipedia.org/wiki/Claude_Shannon and tell me his birth date, death date, and three key contributions to information theory.",
+            """Find 3 family-friendly things to do in Tokyo this weekend.
+Check Saturday's weather forecast there and tell me which one
+is most appropriate.""",
+            """ My mom's birthday is 15 May 2026. Remember that and give me
+       a calendar reminder for two weeks before and on the day. """,
+            """When is mom's birthday?""",
+            """Search for 'Python asyncio best practices', read the top 3 results,
+and give me a short numbered list of the advice they agree on."""
+            ]
+
+        for i, query in enumerate(q):
+            print(f"\n{'-'*60}")
+            print(f"QUERY {i+1}: {query}")
+            print(f"{'-'*60}")
+            answer = await run(query)
+            print(f"\nANSWER: {answer}")
+            print(f"{'='*60}")
+
 
     asyncio.run(main())

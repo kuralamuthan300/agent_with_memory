@@ -4,7 +4,7 @@ from schema import Artifact
 
 class ArtifactStore:
     def __init__(self, root: Path):
-        self.artifacts_path = root / "artifacts"
+        self.artifacts_path = root
         self.artifacts_path.mkdir(parents=True, exist_ok=True)
         
 
