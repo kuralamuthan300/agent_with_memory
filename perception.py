@@ -28,6 +28,9 @@ Output ONLY the JSON object, no markdown, no code fences, no other text.
         prior_goals: Optional[list[Goal]],
         run_id: str,
     ) -> Observation:
+        print(f"  [PERCEPTION] Input: query=\"{query}\", hits={len(hits) if hits else 0}, "
+              f"prior_goals={len(prior_goals) if prior_goals else 0}, "
+              f"history_len={len(history) if history else 0}")
         response = self.llm.chat(
             messages=[
                 {
@@ -49,7 +52,7 @@ Output ONLY the JSON object, no markdown, no code fences, no other text.
                     ),
                 }
             ],
-            provider = 'gr',
+            # No hardcoded provider — let the gateway auto-route to any available provider
             system=self.system_prompt,
             response_format={
                 "type": "json_schema",
@@ -58,6 +61,7 @@ Output ONLY the JSON object, no markdown, no code fences, no other text.
         )
 
         raw = response.get("text") or response["choices"][0]["message"]["content"]
+        print(f"  [PERCEPTION] Raw LLM response (first 150 chars): {raw[:150]}...")
         # Strip markdown code fences if present (common with json_schema response_format)
         raw = raw.strip()
         if raw.startswith("```"):

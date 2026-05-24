@@ -37,6 +37,10 @@ INSTRUCTIONS:
     if attached_text:
         user_message += "\n\nATTACHED ARTIFACTS:\n" + "\n---\n".join(attached_text)
     
+    print(f"  [DECISION] Goal: \"{goal.text}\" (id={goal.id})")
+    print(f"  [DECISION] Memory hits: {len(hits)}, Attached artifacts: {len(attached)}")
+    print(f"  [DECISION] Available tools: {[t['name'] for t in mcp_tools]}")
+    
     response = llm.chat(
         messages=[{"role": "user", "content": user_message}],
         system=system_prompt,
@@ -56,6 +60,7 @@ INSTRUCTIONS:
         if isinstance(args, str):
             args = json.loads(args)
             
+        print(f"  [DECISION] LLM chose TOOL CALL: {func['name']} with args: {args}")
         return DecisionOutput(
             answer=None,
             tool_call=ToolCall(name=func["name"], arguments=args)
@@ -63,6 +68,7 @@ INSTRUCTIONS:
     else:
         # LLM provided an answer text
         text = response.get("text") or (response.get("choices") and response["choices"][0]["message"]["content"])
+        print(f"  [DECISION] LLM chose ANSWER (first 100 chars): {text[:100]}...")
         return DecisionOutput(
             answer=text,
             tool_call=None

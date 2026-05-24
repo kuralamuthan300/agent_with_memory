@@ -35,10 +35,12 @@ async def execute(
         persist it via ``ArtifactStore.put(...)`` and return a short artifact
         descriptor.  Otherwise return the text directly.
     """
+    print(f"  [ACTION] Guard check: validating arguments for artifact handles...")
     # ── Guard: reject artifact handles passed as path / url values ──
     for key in ("path", "url"):
         val = tool_call.arguments.get(key)
         if isinstance(val, str) and val.startswith("art:"):
+            print(f"  [ACTION] REJECTED: argument '{key}' contains artifact handle '{val}'")
             return (
                 f"ERROR: argument '{key}' has value '{val}' which looks like "
                 f"an artifact handle, not a real path or URL.  Use the "
@@ -46,13 +48,16 @@ async def execute(
                 None,
             )
 
+    print(f"  [ACTION] Dispatching tool \"{tool_call.name}\" with args: {tool_call.arguments}")
     # ── Real MCP dispatch ──
     result = await session.call_tool(tool_call.name, arguments=tool_call.arguments)
     text = _collapse_content(result.content)
 
     # ── Threshold check → persist large payloads ──
     payload_bytes = text.encode("utf-8")
+    print(f"  [ACTION] Tool returned {len(payload_bytes)} bytes")
     if len(payload_bytes) > ARTIFACT_THRESHOLD_BYTES:
+        print(f"  [ACTION] Payload exceeds threshold ({ARTIFACT_THRESHOLD_BYTES} bytes). Storing as artifact...")
         aid = _store.put(
             blob=payload_bytes,
             content_type="text/plain",
@@ -63,8 +68,10 @@ async def execute(
         descriptor = (
             f"[artifact {aid}, {len(payload_bytes)} bytes] preview: {preview}"
         )
+        print(f"  [ACTION] Stored as artifact: {aid}")
         return descriptor, aid
 
+    print(f"  [ACTION] Small payload, returning directly. Preview: {text[:100]}...")
     return text, None
 
 

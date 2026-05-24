@@ -67,45 +67,82 @@ def final_answer_from(history: list[dict]) -> str:
 
 
 async def run(query: str) -> str:
+    print("\n=== AGENT START ===")
+    print(f"[AGENT] Query: {query}")
     ensure_gateway()
     run_id = uuid.uuid4().hex[:8]
+    print(f"[AGENT] Run ID: {run_id}")
     history: list[dict] = []
     prior_goals: list[Goal] = []
 
     # Durable memory: classify the user's query so facts/preferences
     # in it survive into future runs.
+    print("[AGENT] Remembering user query in durable memory...")
     memory.remember(query, source="user_query", run_id=run_id)
 
     async with mcp_session() as session:
+        print("[AGENT] MCP session established. Loading tools...")
         mcp_tools = await load_tools(session)
         tools = mcp_tools_for_decision(mcp_tools)
+        print(f"[AGENT] Loaded {len(tools)} MCP tools: {[t['name'] for t in tools]}")
 
         for it in range(1, MAX_ITERATIONS + 1):
+            print(f"\n{'='*50}")
+            print(f"[AGENT] ITERATION {it}")
+            print(f"{'='*50}")
+
+            # ── Memory retrieval ──
+            print("[AGENT] Reading from memory...")
             hits = memory.read(query, history)
+            print(f"[AGENT] Memory hits: {len(hits)} item(s)")
+
+            # ── Perception (goal-setting) ──
+            print("[AGENT] Perception: analyzing situation and setting goals...")
             obs = perception.observe(query, hits, history, prior_goals, run_id)
             prior_goals = obs.goals
-            
+            print(f"[AGENT] Perception returned {len(obs.goals)} goal(s):")
+            for g in obs.goals:
+                status = "DONE" if g.done else "PENDING"
+                attach = f" [attached: {g.attach_artifact_id}]" if g.attach_artifact_id else ""
+                print(f"         - [{status}] {g.text}{attach}")
+
             unfinished_goals = [g for g in obs.goals if not g.done]
+            print(f"[AGENT] Unfinished goals: {len(unfinished_goals)}")
             if not unfinished_goals:
+                print("[AGENT] All goals complete. Breaking loop.")
                 break
 
             goal = unfinished_goals[0]
-            
+            print(f"[AGENT] Working on goal: \"{goal.text}\" (id={goal.id})")
+
             attached = []
             if goal.attach_artifact_id and artifacts.exists(goal.attach_artifact_id):
-                attached.append((
-                    goal.attach_artifact_id,
-                    artifacts.get_bytes(goal.attach_artifact_id),
-                ))
+                data = artifacts.get_bytes(goal.attach_artifact_id)
+                attached.append((goal.attach_artifact_id, data))
+                print(f"[AGENT] Attached artifact {goal.attach_artifact_id} ({len(data)} bytes) to goal")
 
+            # ── Decision (LLM picks tool or answer) ──
+            print("[AGENT] Decision: asking LLM for next step...")
             out = decision.next_step(goal, hits, attached, history, tools)
 
             if out.answer is not None:
+                print(f"[AGENT] Decision LLM chose ANSWER: \"{out.answer[:100]}...\" (truncated)")
                 history.append({"iter": it, "kind": "answer",
                                 "goal_id": goal.id, "text": out.answer})
                 continue
 
+            if out.tool_call is not None:
+                print(f"[AGENT] Decision LLM chose TOOL CALL: {out.tool_call.name}({out.tool_call.arguments})")
+
+            # ── Action (execute tool via MCP) ──
+            print(f"[AGENT] Action: executing tool \"{out.tool_call.name}\"...")
             result_text, art_id = await action.execute(session, out.tool_call)
+            print(f"[AGENT] Tool result: {result_text[:200]}...")
+            if art_id:
+                print(f"[AGENT] Large result stored as artifact: {art_id}")
+
+            # ── Record outcome ──
+            print("[AGENT] Recording tool outcome in memory...")
             memory.record_outcome(
                 tool_call=out.tool_call,
                 result_text=result_text,
@@ -118,8 +155,12 @@ async def run(query: str) -> str:
                             "arguments": out.tool_call.arguments,
                             "result_descriptor": result_text[:300],
                             "artifact_id": art_id})
+            print(f"[AGENT] History now has {len(history)} entries")
 
-    return final_answer_from(history)
+    final = final_answer_from(history)
+    print(f"\n[AGENT] Final answer extracted from history: {final[:150]}...")
+    print("=== AGENT END ===\n")
+    return final
 
 if __name__ == "__main__":
     import asyncio

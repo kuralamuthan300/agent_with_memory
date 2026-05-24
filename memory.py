@@ -30,6 +30,7 @@ class Memory:
         """
         query_tokens = _tokenize(query)
         if not query_tokens:
+            print(f"  [MEMORY read] No query tokens to match against. Returning empty.")
             return []
         
         candidates = self.memory_data
@@ -50,7 +51,12 @@ class Memory:
                 
         # Sort by score descending.
         ranked.sort(key=lambda x: x[0], reverse=True)
-        return [item for _, item in ranked[:top_k]]
+        results = [item for _, item in ranked[:top_k]]
+        print(f"  [MEMORY read] query=\"{query}\" -> {len(results)} hit(s) from {len(self.memory_data)} total items")
+        if results:
+            for r in results:
+                print(f"              - [{r.kind}] {r.descriptor[:80]}")
+        return results
 
     def filter(self, kinds=None, goal_id=None, recent=None):
         """

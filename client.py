@@ -30,9 +30,23 @@ class LLM:
             "response_format": response_format,
         }
         body = {k: v for k, v in body.items() if v is not None}
+        msg_count = len(messages) if messages else (1 if prompt else 0)
+        tool_count = len(tools) if tools else 0
+        provider_str = provider or "auto"
+        print(f"    [CLIENT] POST /v1/chat  provider={provider_str}  messages={msg_count}  "
+              f"tools={tool_count}  max_tokens={max_tokens}  "
+              f"response_format={'yes' if response_format else 'no'}")
         r = httpx.post(f"{self.base_url}/v1/chat", json=body, timeout=self.timeout)
+        print(f"    [CLIENT] Response: HTTP {r.status_code}")
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        if data.get("tool_calls"):
+            print(f"    [CLIENT] Got {len(data['tool_calls'])} tool_call(s): "
+                  f"{[tc.get('name') or tc.get('function', {}).get('name', '?') for tc in data['tool_calls']]}")
+        else:
+            text = data.get("text", "")
+            print(f"    [CLIENT] Got text response ({len(text)} chars): {text[:80]}...")
+        return data
 
     def stream(self, prompt: str = None, *, messages=None, system=None,
                provider: str = None, model: str = None,
