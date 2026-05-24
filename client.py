@@ -28,7 +28,6 @@ class LLM:
             "tools": tools, "tool_choice": tool_choice,
             "cache_system": cache_system, "reasoning": reasoning,
             "response_format": response_format,
-            "auto_route": auto_route,
         }
         body = {k: v for k, v in body.items() if v is not None}
         r = httpx.post(f"{self.base_url}/v1/chat", json=body, timeout=self.timeout)
@@ -37,7 +36,7 @@ class LLM:
 
     def stream(self, prompt: str = None, *, messages=None, system=None,
                provider: str = None, model: str = None,
-               max_tokens: int = 2048, temperature: float = 0.7,
+               max_tokens: int = 2048, temperature: float = 0.5,
                tools=None, tool_choice=None,
                cache_system=None, reasoning=None, response_format=None):
         body = {

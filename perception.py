@@ -36,12 +36,12 @@ Output ONLY the JSON object, no markdown, no code fences, no other text.
                         {
                             "query": query,
                             "prior_goals": (
-                                [g.model_dump() for g in prior_goals]
+                                [g.model_dump(mode='json') for g in prior_goals]
                                 if prior_goals
                                 else None
                             ),
                             "hits": (
-                                [h.model_dump() for h in hits] if hits else None
+                                [h.model_dump(mode='json') for h in hits] if hits else None
                             ),
                             "history": history,
                             "run_id": run_id,
