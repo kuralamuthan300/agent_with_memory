@@ -1,6 +1,256 @@
 # Agent with Memory
 
-This project implements an LLM agent with durable memory, perception, decision-making, action execution, and artifact storage capabilities using the Model Context Protocol (MCP).
+An autonomous LLM agent with durable memory, perception, decision-making, action execution, and artifact storage — all powered by the Model Context Protocol (MCP).
+
+## Prompt Evaluation
+
+The system uses two LLM prompts for goal-setting (Perception) and action-selection (Decision). Below is a structured evaluation of each prompt against standard criteria for LLM reasoning quality.
+
+### Perception Prompt (`perception.py`)
+
+```json
+{
+  "explicit_reasoning": true,
+  "structured_output": true,
+  "tool_separation": true,
+  "conversation_loop": true,
+  "instructional_framing": true,
+  "internal_self_checks": true,
+  "reasoning_type_awareness": true,
+  "fallbacks": true,
+  "overall_clarity": "Excellent. All 8 criteria are fully satisfied. The prompt provides step-by-step reasoning instructions, enforces JSON schema output, clearly separates reasoning from tool execution, supports multi-turn loops, gives good/bad examples, includes self-verification steps, defines reasoning types, and specifies error handling strategies."
+}
+```
+
+**Strengths:**
+- **Section 1** ("REASON STEP-BY-STEP") explicitly asks the model to reason through 4 ordered questions before answering.
+- **Section 2** ("STRUCTURED OUTPUT FORMAT") enforces a strict JSON schema with no markdown or code fences.
+- **Section 3** ("SEPARATION OF REASONING AND ACTION") clearly distinguishes goal-setting (what to do) from tool execution (how to do it).
+- **Section 4** ("CONVERSATION LOOP SUPPORT") describes the multi-turn loop and instructs the model to update goal states across iterations.
+- **Section 5** ("INSTRUCTIONAL FRAMING") provides 3 good examples and 2 bad examples of goals.
+- **Section 6** ("INTERNAL SELF-CHECKS") instructs the model to verify completeness, ordering, redundancy, and context sufficiency.
+- **Section 7** ("REASONING TYPE AWARENESS") defines 5 reasoning types (Lookup, Arithmetic/Computation, Comparison, Extraction, Logic/Planning) and asks the model to embed them in goal text.
+- **Section 8** ("ERROR HANDLING & FALLBACKS") specifies how to handle uncertainty, empty memory, tool errors ("ERROR:" prefix), and prohibits fabrication.
+
+### Decision Prompt (`decision.py`)
+
+```json
+{
+  "explicit_reasoning": true,
+  "structured_output": true,
+  "tool_separation": true,
+  "conversation_loop": true,
+  "instructional_framing": true,
+  "internal_self_checks": true,
+  "reasoning_type_awareness": true,
+  "fallbacks": true,
+  "overall_clarity": "Excellent. All 8 criteria are fully satisfied. The prompt clearly separates answer vs. tool call outputs, enforces substantive responses, includes multi-turn loop context, and provides robust error handling guidance."
+}
+```
+
+**Strengths:**
+- **Section 1** ("REASON STEP-BY-STEP") asks the model to reason through 4 ordered questions before committing to an action.
+- **Section 2** ("STRUCTURED OUTPUT FORMAT") enforces exactly one of two outputs (Answer or Tool call) — never both.
+- **Section 3** ("SEPARATION OF REASONING AND TOOL USE") explicitly states that reasoning and tool execution are separate and must not be mixed.
+- **Section 4** ("CONVERSATION LOOP SUPPORT") describes the multi-turn loop, including how artifacts are provided as plain text and how history prevents redundant calls.
+- **Section 5** ("INSTRUCTIONAL FRAMING") provides rules for artifact handles (`art:`), substantive answer requirements, and both good and bad answer examples.
+- **Section 6** ("INTERNAL SELF-CHECKS") includes 5 verification questions covering relevance, argument quality, repeat prevention, arithmetic accuracy, and spelling.
+- **Section 7** ("REASONING TYPE AWARENESS") defines 5 reasoning types (Lookup, Arithmetic/Computation, Comparison, Extraction, Logic/Planning).
+- **Section 8** ("ERROR HANDLING & FALLBACKS") covers retry logic for previous errors, honesty about uncertainty, impossibility handling, and anti-hallucination instructions.
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         agent.py (run loop)                         │
+│                                                                     │
+│  ┌─────────────┐   ┌──────────────┐   ┌────────────┐              │
+│  │ memory.py   │   │perception.py │   │decision.py │              │
+│  │ ─ remember()│   │ ─ observe()  │   │ ─ next_    │              │
+│  │ ─ read()    │   │   (LLM sets  │   │   step()   │              │
+│  │ ─ record_   │   │    goals)    │   │   (LLM     │              │
+│  │   outcome() │   └──────┬───────┘   │   picks     │              │
+│  └──────┬──────┘          │            │   tool or   │              │
+│         │                 │            │   answer)   │              │
+│         │                 │            └──────┬──────┘              │
+│         │                 │                   │                     │
+│         ▼                 ▼                   ▼                     │
+│  ┌─────────────────────────────────────────────────────┐           │
+│  │                 artifacts.py                        │           │
+│  │       ArtifactStore (SHA-256 blob storage)          │           │
+│  │       └── used by agent.py (read attached goals)    │           │
+│  │       └── used by action.py (write large payloads)  │           │
+│  └─────────────────────────────────────────────────────┘           │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────┐           │
+│  │                  action.py                         │           │
+│  │  ─ execute(session, tool_call) → dispatches via     │           │
+│  │    MCP ClientSession to subprocess                  │           │
+│  └──────────────────────┬──────────────────────────────┘           │
+│                         │ session.call_tool() via stdio             │
+└─────────────────────────┼───────────────────────────────────────────┘
+                          │
+           ┌──────────────┴──────────────┐
+           │                              │
+           ▼                              ▼
+┌─────────────────────┐    ┌──────────────────────────────┐
+│  MCP Server          │    │  LLM Gateway V3              │
+│  (mcp_server.py)     │    │  (client.py →                │
+│  runs as subprocess  │    │   http://localhost:8101/     │
+│  via stdio transport)│    │   v1/chat)                   │
+│                      │    │                              │
+│  9 tools:            │    │  Called by:                  │
+│  ─ web_search (Tavily)│   │  ─ memory.py (remember,     │
+│  ─ fetch_url (crawl4ai)│  │      record_outcome)         │
+│  ─ get_time           │    │  ─ perception.py (observe)  │
+│  ─ currency_convert   │    │  ─ decision.py (next_step)  │
+│  ─ read_file (sandbox)│   │                              │
+│  ─ list_dir  (sandbox)│   │                              │
+│  ─ create_file(sandbox)│  │                              │
+│  ─ update_file(sandbox)│  │                              │
+│  ─ edit_file  (sandbox)│  │                              │
+└──────────────────────┘    └──────────────────────────────┘
+```
+
+### Agent Loop (agent.py)
+
+The main orchestration loop in `agent.py` runs for up to `MAX_ITERATIONS = 15` iterations:
+
+1. **Memory Retrieval** — Query keyword-overlap search against persisted memory (facts, preferences, tool outcomes from prior runs).
+2. **Perception** — LLM analyses the query, memory hits, prior goals, and history to decide what goals to pursue next.
+3. **Decision** — LLM chooses either to answer a goal directly or call exactly one MCP tool.
+4. **Action** — Dispatches the tool call through the live MCP session; large payloads (>4 KB) are automatically stored as artifacts.
+5. **Memory Recording** — Summarises tool outcomes via LLM and persists them as `tool_outcome` memory items.
+
+The loop continues until all goals are marked DONE or the iteration limit is reached.
+
+## Components
+
+### `memory.py` — Durable Memory
+
+Persists structured memory items (`fact`, `preference`, `tool_outcome`, `scratchpad`) to `state/memory.json`.
+
+- **`remember(raw_text)`** — Extracts facts/preferences from user input via LLM with JSON schema output.
+- **`read(query, history)`** — Keyword overlap search against keywords + descriptor tokens, returns top-k matches.
+- **`filter(kinds, goal_id)`** — Structured retrieval by kind, goal ID, and recency.
+- **`relevant(query, kinds)`** — LLM-scored semantic relevance over a kind-filtered pool (fallback when keyword recall is weak).
+- **`record_outcome(tool_call, result, artifact_id)`** — Summarises a tool execution result and stores it as a `tool_outcome` memory item.
+
+### `perception.py` — Goal Setting
+
+Analyses the situation (query + memory hits + prior goals + history) and proposes a set of `Goal` objects. Each goal has an `id`, `text` (imperative description), `done` flag, and optional `attach_artifact_id`. The LLM is prompted to separate reasoning (what to do) from action (how to do it).
+
+### `decision.py` — Tool/Action Selection
+
+Given a single goal, memory hits, attached artifacts, and history, decides the next atomic step:
+- **Answer** — Return a substantive text response directly.
+- **Tool call** — Call exactly one MCP tool with precise arguments, one per iteration.
+
+Uses LLM function-calling (`tool_choice="auto"`) routed through the gateway's `auto_route="decision"` path.
+
+### `action.py` — Tool Dispatch
+
+Stateless dispatcher that:
+1. Guards against `art:` artifact handles being passed as `path`/`url` arguments.
+2. Calls `session.call_tool()` via the live MCP session.
+3. Collapses result content blocks into a single string.
+4. If the payload exceeds 4 KB, stores it in the `ArtifactStore` and returns a short descriptor.
+
+### `artifacts.py` — Artifact Storage
+
+Persists large binary/text blobs to `state/artifacts/` with SHA-256 content addressing. Each artifact gets an `art:<sha-prefix>` ID and a sidecar `<id>.meta.json` metadata file.
+
+### `mcp_server.py` — MCP Server (9 tools)
+
+| Tool | Description | Backend |
+|------|-------------|--------|
+| `web_search` | Web search | Tavily (primary) → DuckDuckGo (fallback) |
+| `fetch_url` | Fetch URL as clean markdown | crawl4ai (headless Chromium) |
+| `get_time` | Current time in a timezone | Python `zoneinfo` |
+| `currency_convert` | Currency conversion | frankfurter.dev API |
+| `read_file` | Read file from sandbox | Local filesystem (sandboxed) |
+| `list_dir` | List directory in sandbox | Local filesystem (sandboxed) |
+| `create_file` | Create file in sandbox | Local filesystem (sandboxed) |
+| `update_file` | Overwrite file in sandbox | Local filesystem (sandboxed) |
+| `edit_file` | Find-and-replace in sandbox file | Local filesystem (sandboxed) |
+
+Usage is tracked in `usage.json` with monthly rollover and a soft cap of 950 requests/month on Tavily.
+
+### `client.py` — LLM Gateway Client
+
+Thin HTTP client wrapping `POST /v1/chat` against the LLM Gateway V3 (expected at `http://localhost:8101`). Supports tool calling, streaming, JSON schema response format, and an `auto_route` parameter for provider routing.
+
+### `schema.py` — Pydantic Models
+
+| Model | Purpose |
+|-------|---------|
+| `MemoryItem` | A stored memory with kind, keywords, descriptor, value, artifact link |
+| `Artifact` | Metadata about a stored blob |
+| `Goal` | A goal with id, text, done status, optional artifact attachment |
+| `Observation` | List of goals produced by Perception |
+| `ToolCall` | Name + arguments for an MCP tool dispatch |
+| `DecisionOutput` | Either an answer text or a tool call (mutually exclusive) |
+
+## Prerequisites
+
+- Python 3.14+ (defined in `.python-version`)
+- [uv](https://docs.astral.sh/uv/) package manager
+- LLM Gateway V3 running at `http://localhost:8101`
+- `TAVILY_API_KEY` in `.env` file (optional, DuckDuckGo fallback)
+
+## Setup
+
+```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd agent_with_memory
+
+# 2. Install dependencies via uv
+uv sync
+
+# 3. Set up environment variables
+cp .env.example .env  # or edit .env directly
+# Edit .env to add your TAVILY_API_KEY (optional)
+
+# 4. Ensure LLM Gateway V3 is running
+# The gateway must be accessible at http://localhost:8101/v1/chat
+
+# 5. (Optional) Install Playwright browsers for fetch_url
+uv run playwright install chromium
+
+# 6. Clean state for a fresh run (optional)
+rm -f state/memory.json
+rm -rf state/artifacts/*
+```
+
+## How to Run
+
+### Run all 5 default queries (from a clean state):
+
+```bash
+uv run python agent.py
+```
+
+This executes the five queries defined in `agent.py`'s `main()` block sequentially:
+1. Fetch Claude Shannon's Wikipedia page → extract birth/death dates + 3 contributions
+2. Find 3 family-friendly Tokyo activities + check Saturday's weather
+3. Remember mom's birthday + create calendar reminders
+4. Retrieve mom's birthday from memory
+5. Search Python asyncio best practices → compare 3 sources
+
+### Run a single custom query:
+
+```bash
+uv run python agent.py "What is the weather in Paris?"
+```
+
+This runs only the provided query through the agent loop and prints the final answer.
+
+### Visualising the agent in action:
+
+The agent prints detailed logs at every step, including memory hits, goal states, tool calls, and answers. These logs are also captured in the terminal output section below.
 
 ## Terminal Output (Clean State Run)
 
