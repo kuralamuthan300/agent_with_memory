@@ -117,7 +117,6 @@ class Memory:
             response = llm.chat(
                 messages=[{"role": "user", "content": prompt}],
                 system=system_prompt,
-                provider="auto",
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
@@ -208,7 +207,6 @@ class Memory:
             response = llm.chat(
                 messages=[{"role": "user", "content": raw_text}],
                 system=system_prompt,
-                provider="auto",
                 response_format={
                     "type": "json_schema",
                     "json_schema": schema
@@ -221,7 +219,10 @@ class Memory:
                 if raw.endswith("```"):
                     raw = raw[:-3].strip()
             data = json.loads(raw)
-            memories = data.get("memories", [])
+            if isinstance(data, list):
+                memories = data
+            else:
+                memories = data.get("memories", [])
             
             for mem in memories:
                 item = MemoryItem(
@@ -283,7 +284,6 @@ class Memory:
             response = llm.chat(
                 messages=[{"role": "user", "content": prompt}],
                 system=system_prompt,
-                provider="auto",
                 response_format={
                     "type": "json_schema",
                     "json_schema": {

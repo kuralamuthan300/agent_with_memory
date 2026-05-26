@@ -23,7 +23,7 @@ def next_step(
         "### 1. REASON STEP-BY-STEP\n"
         "Think step by step before committing to an action. Reason through:\n"
         "  a) What exactly does the current goal require?\n"
-        "  b) Do I already have enough information to answer? If yes, produce the answer now.\n"
+        "  b) Do I already have enough information to answer the ENTIRE overarching user query? If yes, produce the FINAL answer now. Do NOT output intermediate answers just because you gathered some information.\n"
         "  c) If not, which single tool would provide the missing information?\n"
         "  d) Is there a dependency order? (e.g., fetch a URL before extracting data from it)\n\n"
 
@@ -99,7 +99,10 @@ def next_step(
     attached_text = []
     for aid, b in attached:
         try:
-            attached_text.append(f"Artifact {aid}:\n{b.decode('utf-8')}")
+            text = b.decode('utf-8')
+            if len(text) > 32000:
+                text = text[:32000] + "\n\n[TRUNCATED due to length]"
+            attached_text.append(f"Artifact {aid}:\n{text}")
         except:
             attached_text.append(f"Artifact {aid}: <binary data, size {len(b)}>")
 
