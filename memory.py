@@ -117,7 +117,7 @@ class Memory:
             response = llm.chat(
                 messages=[{"role": "user", "content": prompt}],
                 system=system_prompt,
-                provider="gr",
+                provider="auto",
                 response_format={
                     "type": "json_schema",
                     "json_schema": {
@@ -208,7 +208,7 @@ class Memory:
             response = llm.chat(
                 messages=[{"role": "user", "content": raw_text}],
                 system=system_prompt,
-                provider="gr",
+                provider="auto",
                 response_format={
                     "type": "json_schema",
                     "json_schema": schema
@@ -283,7 +283,7 @@ class Memory:
             response = llm.chat(
                 messages=[{"role": "user", "content": prompt}],
                 system=system_prompt,
-                provider="gr",
+                provider="auto",
                 response_format={
                     "type": "json_schema",
                     "json_schema": {

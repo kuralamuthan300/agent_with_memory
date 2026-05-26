@@ -17,6 +17,9 @@ def next_step(
         "and history, and decide the very next step: either answer directly or "
         "call exactly one tool.\n\n"
 
+        "Every tool call is costly, make sure you handle each goal efficiently. Make use of memory hits and artifacts\n\n"
+        "Try to achieve the goal in efficient and correct way possible"
+
         "### 1. REASON STEP-BY-STEP\n"
         "Think step by step before committing to an action. Reason through:\n"
         "  a) What exactly does the current goal require?\n"

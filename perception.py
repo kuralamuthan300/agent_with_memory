@@ -12,6 +12,8 @@ class Perception:
             "Your job is to analyse the current situation — user query, memory hits, "
             "prior goals, and history — and decide what goals the agent should pursue next.\n\n"
 
+            "### INSTRUCTIONS FOR PERCEPTION: You need to think of a quicker way to achieve the goal by optimising the goals you are framing. So the planning should be efficient so agentic loop iteration reduces"
+
             "### 1. REASON STEP-BY-STEP\n"
             "Think carefully before you answer. Reason through these questions in order:\n"
             "  a) What is the user's underlying intent in the query?\n"
